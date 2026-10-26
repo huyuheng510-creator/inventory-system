@@ -1,0 +1,22 @@
+# Maven build output
+target/
+
+# Runtime data (created and seeded automatically on first run)
+data/
+
+# IDE / OS artifacts
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.vscode/
+Thumbs.db
+.DS_Store
+
+# Derby writes its diagnostic log to the working directory
+derby.log
+
+# Python bytecode (figure and Word-document build scripts)
+__pycache__/
+*.pyc
