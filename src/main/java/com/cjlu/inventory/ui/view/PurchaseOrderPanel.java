@@ -5,6 +5,7 @@ import com.cjlu.inventory.model.PurchaseOrder;
 import com.cjlu.inventory.model.PurchaseOrderStatus;
 import com.cjlu.inventory.ui.component.DisplayRenderer;
 import com.cjlu.inventory.ui.controller.PurchaseOrderController;
+import com.cjlu.inventory.ui.mediator.ViewMediator;
 import com.cjlu.inventory.ui.table.PurchaseOrderLineTableModel;
 import com.cjlu.inventory.ui.table.PurchaseOrderTableModel;
 import com.cjlu.inventory.ui.util.Theme;
@@ -56,7 +57,7 @@ public class PurchaseOrderPanel extends JPanel {
     private final JLabel countLabel = UiUtils.subtitleLabel("0 purchase orders");
     private JSplitPane splitPane;
 
-    public PurchaseOrderPanel(ApplicationContext context) {
+    public PurchaseOrderPanel(ApplicationContext context, ViewMediator mediator) {
         this.context = context;
         setLayout(new BorderLayout(0, 12));
         setOpaque(true);
@@ -91,7 +92,7 @@ public class PurchaseOrderPanel extends JPanel {
         add(buildHeader(), BorderLayout.NORTH);
         add(buildCenter(), BorderLayout.CENTER);
 
-        controller = new PurchaseOrderController(context, this);
+        controller = new PurchaseOrderController(context, this, mediator);
         wireEvents();
         controller.initialize();
     }

@@ -5,6 +5,8 @@ import com.cjlu.inventory.model.User;
 import com.cjlu.inventory.ui.component.StatusBar;
 import com.cjlu.inventory.ui.controller.GuiStockObserver;
 import com.cjlu.inventory.ui.controller.MainController;
+import com.cjlu.inventory.ui.mediator.ViewEvent;
+import com.cjlu.inventory.ui.mediator.ViewMediator;
 import com.cjlu.inventory.ui.util.Theme;
 import com.cjlu.inventory.ui.util.UiUtils;
 import com.cjlu.inventory.ui.view.AdministrationPanel;
@@ -43,8 +45,13 @@ import java.awt.event.WindowEvent;
  * <p>The window title is fixed by the project specification. Closing the
  * window asks for confirmation, shuts the embedded database down and exits the
  * JVM.</p>
+ *
+ * <p>This class is also the concrete {@link ViewMediator} (Mediator pattern):
+ * it owns every panel, so it is the natural place to decide which panels have
+ * to refresh after a change reported by one of them. The panels themselves hold
+ * only a {@code ViewMediator} reference and never see each other.</p>
  */
-public class MainFrame extends JFrame {
+public class MainFrame extends JFrame implements ViewMediator {
 
     private static final long serialVersionUID = 1L;
 
@@ -73,8 +80,8 @@ public class MainFrame extends JFrame {
 
         dashboardPanel = new DashboardPanel(context);
         productPanel = new ProductPanel(context);
-        stockPanel = new StockPanel(context);
-        purchaseOrderPanel = new PurchaseOrderPanel(context);
+        stockPanel = new StockPanel(context, this);
+        purchaseOrderPanel = new PurchaseOrderPanel(context, this);
         reportsPanel = new ReportsPanel(context);
         administrationPanel = context.getAuthService().isAdmin()
                 ? new AdministrationPanel(context)
@@ -227,13 +234,77 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /** Observer callback: refresh the dashboard and the product table. */
+    /** Observer callback: route the stock change through the mediator. */
     private void refreshAfterStockChange() {
+        notifyChange(this, ViewEvent.STOCK_CHANGED);
+    }
+
+    // ----------------------------------------------------- ViewMediator
+
+    /**
+     * Mediator entry point: maps one reported business change to the panels
+     * that actually depend on it, skipping the panel that reported it and the
+     * panel currently on screen (the tab-change listener already refreshes
+     * that one).
+     */
+    @Override
+    public void notifyChange(Object source, ViewEvent event) {
+        if (event == null) {
+            return;
+        }
         try {
-            dashboardPanel.refresh();
-            productPanel.refresh();
+            switch (event) {
+                case STOCK_CHANGED -> {
+                    refreshUnless(source, dashboardPanel);
+                    refreshUnless(source, productPanel);
+                    refreshUnless(source, stockPanel);
+                }
+                case CATALOGUE_CHANGED -> {
+                    refreshUnless(source, dashboardPanel);
+                    refreshUnless(source, productPanel);
+                    refreshUnless(source, stockPanel);
+                    refreshUnless(source, purchaseOrderPanel);
+                }
+                case PURCHASE_ORDER_CHANGED -> {
+                    refreshUnless(source, dashboardPanel);
+                    refreshUnless(source, productPanel);
+                    refreshUnless(source, purchaseOrderPanel);
+                }
+                case MASTER_DATA_CHANGED -> {
+                    refreshUnless(source, productPanel);
+                    refreshUnless(source, purchaseOrderPanel);
+                    if (administrationPanel != null) {
+                        refreshUnless(source, administrationPanel);
+                    }
+                }
+            }
         } catch (RuntimeException ignored) {
-            // The panels already report their own failures; never break the EDT.
+            // The panels report their own failures; never break the EDT.
+        }
+    }
+
+    @Override
+    public void showStatus(String message) {
+        statusBar.setMessage(message);
+    }
+
+    /** Refreshes {@code target} unless it is the panel that reported the change. */
+    private void refreshUnless(Object source, JPanel target) {
+        if (source == target || target == null) {
+            return;
+        }
+        if (target == dashboardPanel) {
+            dashboardPanel.refresh();
+        } else if (target == productPanel) {
+            productPanel.refresh();
+        } else if (target == stockPanel) {
+            stockPanel.refresh();
+        } else if (target == purchaseOrderPanel) {
+            purchaseOrderPanel.refresh();
+        } else if (target == reportsPanel) {
+            reportsPanel.refresh();
+        } else if (target == administrationPanel) {
+            administrationPanel.refresh();
         }
     }
 

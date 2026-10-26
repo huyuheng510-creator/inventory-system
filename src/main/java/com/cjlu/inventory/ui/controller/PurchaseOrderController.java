@@ -6,6 +6,8 @@ import com.cjlu.inventory.model.Product;
 import com.cjlu.inventory.model.PurchaseOrder;
 import com.cjlu.inventory.model.PurchaseOrderStatus;
 import com.cjlu.inventory.model.Supplier;
+import com.cjlu.inventory.ui.mediator.ViewEvent;
+import com.cjlu.inventory.ui.mediator.ViewMediator;
 import com.cjlu.inventory.ui.util.UiUtils;
 import com.cjlu.inventory.ui.view.PurchaseOrderPanel;
 import com.cjlu.inventory.ui.view.dialog.PurchaseOrderDialog;
@@ -26,13 +28,16 @@ public final class PurchaseOrderController {
 
     private final ApplicationContext context;
     private final PurchaseOrderPanel panel;
+    private final ViewMediator mediator;
     private Map<String, String> supplierNames = new HashMap<>();
     private Map<String, String> productSkus = new HashMap<>();
     private Map<String, String> productNames = new HashMap<>();
 
-    public PurchaseOrderController(ApplicationContext context, PurchaseOrderPanel panel) {
+    public PurchaseOrderController(ApplicationContext context, PurchaseOrderPanel panel,
+                                   ViewMediator mediator) {
         this.context = Objects.requireNonNull(context, "context");
         this.panel = Objects.requireNonNull(panel, "panel");
+        this.mediator = Objects.requireNonNull(mediator, "mediator");
     }
 
     /** Initial load of the order table. */
@@ -75,6 +80,7 @@ public final class PurchaseOrderController {
             dialog.setVisible(true);
             if (dialog.isSaved()) {
                 refresh();
+                mediator.notifyChange(panel, ViewEvent.PURCHASE_ORDER_CHANGED);
             }
         } catch (RuntimeException failure) {
             UiUtils.handle(panel, "open the purchase-order draft dialog", failure);
@@ -108,6 +114,7 @@ public final class PurchaseOrderController {
                     .createReplenishmentDraft(supplier.getId());
             refresh();
             panel.selectOrderById(order.getId());
+            mediator.notifyChange(panel, ViewEvent.PURCHASE_ORDER_CHANGED);
             UiUtils.info(panel, "Draft " + order.getOrderNumber() + " created for " + choice
                     + " with " + order.getLines().size() + " product line(s).");
         } catch (InventoryException failure) {
@@ -131,6 +138,7 @@ public final class PurchaseOrderController {
             context.getPurchaseOrderService().submit(order.getId());
             refresh();
             panel.selectOrderById(order.getId());
+            mediator.notifyChange(panel, ViewEvent.PURCHASE_ORDER_CHANGED);
         } catch (InventoryException failure) {
             UiUtils.handle(panel, "submit the purchase order", failure);
         } catch (RuntimeException failure) {
@@ -151,6 +159,7 @@ public final class PurchaseOrderController {
             context.getPurchaseOrderService().cancel(order.getId());
             refresh();
             panel.selectOrderById(order.getId());
+            mediator.notifyChange(panel, ViewEvent.PURCHASE_ORDER_CHANGED);
         } catch (InventoryException failure) {
             UiUtils.handle(panel, "cancel the purchase order", failure);
         } catch (RuntimeException failure) {
@@ -181,6 +190,7 @@ public final class PurchaseOrderController {
             if (dialog.isSaved()) {
                 refresh();
                 panel.selectOrderById(order.getId());
+                mediator.notifyChange(panel, ViewEvent.PURCHASE_ORDER_CHANGED);
             }
         } catch (InventoryException failure) {
             UiUtils.handle(panel, "receive the purchase order", failure);

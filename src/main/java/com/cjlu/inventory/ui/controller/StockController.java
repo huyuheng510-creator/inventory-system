@@ -5,6 +5,8 @@ import com.cjlu.inventory.exception.InventoryException;
 import com.cjlu.inventory.exception.ValidationException;
 import com.cjlu.inventory.model.Product;
 import com.cjlu.inventory.model.StockTransaction;
+import com.cjlu.inventory.ui.mediator.ViewEvent;
+import com.cjlu.inventory.ui.mediator.ViewMediator;
 import com.cjlu.inventory.ui.util.UiUtils;
 import com.cjlu.inventory.ui.view.StockPanel;
 import com.cjlu.inventory.ui.view.dialog.StockAdjustmentDialog;
@@ -23,12 +25,14 @@ public final class StockController {
 
     private final ApplicationContext context;
     private final StockPanel panel;
+    private final ViewMediator mediator;
     private Product currentProduct;
     private List<StockTransaction> fullHistory = List.of();
 
-    public StockController(ApplicationContext context, StockPanel panel) {
+    public StockController(ApplicationContext context, StockPanel panel, ViewMediator mediator) {
         this.context = Objects.requireNonNull(context, "context");
         this.panel = Objects.requireNonNull(panel, "panel");
+        this.mediator = Objects.requireNonNull(mediator, "mediator");
     }
 
     /** Initial load: product choices and the history of the first product. */
@@ -101,6 +105,7 @@ public final class StockController {
             dialog.setVisible(true);
             if (dialog.isSaved()) {
                 refresh();
+                mediator.notifyChange(panel, ViewEvent.STOCK_CHANGED);
             }
         } catch (RuntimeException failure) {
             UiUtils.handle(panel, "open the stock-in dialog", failure);
@@ -120,6 +125,7 @@ public final class StockController {
             dialog.setVisible(true);
             if (dialog.isSaved()) {
                 refresh();
+                mediator.notifyChange(panel, ViewEvent.STOCK_CHANGED);
             }
         } catch (RuntimeException failure) {
             UiUtils.handle(panel, "open the stock-out dialog", failure);
@@ -143,6 +149,7 @@ public final class StockController {
             dialog.setVisible(true);
             if (dialog.isSaved()) {
                 refresh();
+                mediator.notifyChange(panel, ViewEvent.STOCK_CHANGED);
             }
         } catch (RuntimeException failure) {
             UiUtils.handle(panel, "open the stock adjustment dialog", failure);

@@ -5,6 +5,7 @@ import com.cjlu.inventory.model.Product;
 import com.cjlu.inventory.model.StockTransaction;
 import com.cjlu.inventory.ui.component.DisplayRenderer;
 import com.cjlu.inventory.ui.controller.StockController;
+import com.cjlu.inventory.ui.mediator.ViewMediator;
 import com.cjlu.inventory.ui.table.TransactionTableModel;
 import com.cjlu.inventory.ui.util.Theme;
 import com.cjlu.inventory.ui.util.UiUtils;
@@ -45,7 +46,7 @@ public class StockPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private boolean updatingChoices;
 
-    public StockPanel(ApplicationContext context) {
+    public StockPanel(ApplicationContext context, ViewMediator mediator) {
         this.context = context;
         setLayout(new BorderLayout(0, 12));
         setOpaque(true);
@@ -67,7 +68,7 @@ public class StockPanel extends JPanel {
         add(buildHeader(), BorderLayout.NORTH);
         add(UiUtils.titledCard("Transaction History", UiUtils.scroll(table)), BorderLayout.CENTER);
 
-        controller = new StockController(context, this);
+        controller = new StockController(context, this, mediator);
         wireEvents();
         controller.initialize();
     }
