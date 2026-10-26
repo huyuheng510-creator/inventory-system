@@ -14,9 +14,9 @@ schema and seeds a demonstration dataset. Every later start reconnects to the sa
 | Embedded Apache Derby | `org.apache.derby:derby` in embedded mode; database lives under `data\inventorydb` |
 | JDBC or Hibernate | Plain JDBC (`PreparedStatement`) through a DAO layer, no ORM needed |
 | Data access layer (DAO) | 7 DAO interfaces + 7 `Jdbc*Dao` implementations |
-| Meaningful extension of Project 1 | Purchase-order / replenishment workflow (draft, submit, receive, cancel) |
+| Meaningful extension of Project 1 | Purchase-order / replenishment workflow (draft, submit, receive, cancel), CSV bulk import, session stock-alert history and supplier lead-time tracking |
 | Design patterns | MVC, DAO, Singleton, Factory, Observer, Strategy, Unit of Work |
-| Unit tests | 35 JUnit 4 tests covering DAO operations and business rules |
+| Unit tests | 61 JUnit 4 tests covering DAO operations and business rules |
 | Standard Maven project | `mvn clean package` builds a self-contained runnable jar |
 
 ---
@@ -26,11 +26,13 @@ schema and seeds a demonstration dataset. Every later start reconnects to the sa
 | Area | What the system does |
 |---|---|
 | Sign-in and roles | SHA-256 password hashes in the database; Administrator and Warehouse Staff see different tabs and actions. |
-| Dashboard | KPI cards (catalogue size, inventory value, low/out-of-stock, open purchase orders), low-stock table and a hand-drawn category-value bar chart. |
+| Dashboard | KPI cards (catalogue size, inventory value, low/out-of-stock, open purchase orders), low-stock table, a hand-drawn category-value bar chart and a **Stock Alert History** panel listing every low/out-of-stock warning raised during the session. |
 | Product catalogue | Create, edit and delete products (administrator), unique SKU, category, supplier, `BigDecimal` unit price, quantity, reorder level and unit; validated dialogs. |
+| CSV bulk import (extension) | Administrator-only import of products from a UTF-8 CSV file; the category and supplier are resolved **by name**, each row is committed independently so one broken row never undoes the good ones, and the dialog reports the outcome of every row. |
 | Search / filter / sort | Case-insensitive SKU/name search, category filter and sorting by name, quantity or inventory value. |
 | Stock movements | Stock-in, stock-out and (administrator) physical-count adjustment; the audit log stores type, signed quantity, unit-price snapshot, operator, timestamp and note. |
 | Purchase orders (Project 2 extension) | Draft from selected products or automatically from a supplier's low-stock items, submit, cancel, receive full or partial deliveries; statuses `DRAFT → ORDERED → PARTIALLY_RECEIVED → RECEIVED`, or `CANCELLED`. Receiving creates stock-in transactions atomically. |
+| Supplier lead time (extension) | Every fully received purchase order feeds its actual delivery duration back into the supplier's rolling average; the administration screen shows the average and the number of deliveries per supplier. |
 | Reports | Inventory valuation, stock movement summary with date range, reorder suggestions with a runtime-selectable policy (threshold or 7-day demand). |
 | CSV export | All three reports can be exported to timestamped files under `data\exports\` with a file chooser. |
 | Administration | User accounts (create staff, reset password), categories and suppliers with referential-integrity protection; change own password, sign out and exit. |
@@ -89,12 +91,12 @@ so the dashboard, alerts and purchasing workflow can be demonstrated immediately
 ```
 Sign In
 +-- Main Window (tabs depend on role)
-    +-- Dashboard             KPI cards / low-stock table / category value chart
-    +-- Products              list, search, category filter, sort, add/edit/delete/details
+    +-- Dashboard             KPI cards / low-stock table / category value chart / alert history
+    +-- Products              list, search, category filter, sort, add/edit/delete/details, CSV import
     +-- Stock                 stock in / stock out / adjustment (admin), history, date filter
     +-- Purchase Orders       new draft, from low stock, submit/cancel (admin), receive (full/partial)
     +-- Reports               valuation, movement, reorder suggestions, CSV export
-    +-- Administration        users, categories, suppliers (administrator only)
+    +-- Administration        users, categories, suppliers with lead time (administrator only)
 ```
 
 Screenshots are in `docs\screenshots\`.
@@ -145,8 +147,9 @@ ui (MVC)          ui.view.* / ui.view.dialog.*    Swing panels and dialogs (no b
                   ui.table.* / ui.component.*      table models, KPI cards, charts, renderers
                         |
 service           AuthService, ProductService, CatalogService, StockService,
-                  ReportService, PurchaseOrderService, TransactionFactory,
-                  strategy.* (ReorderPolicy), observer.* (StockLevelObserver)
+                  ReportService, PurchaseOrderService, AlertHistoryService,
+                  TransactionFactory, strategy.* (ReorderPolicy),
+                  observer.* (StockLevelObserver)
                         |
 dao               UserDao, CategoryDao, SupplierDao, ProductDao,
                   TransactionDao, PurchaseOrderDao, PurchaseOrderLineDao
@@ -164,7 +167,9 @@ db / model        DatabaseManager (Singleton, connections + transactions),
   lifecycle.
 * **Factory** — `TransactionFactory` centralises the invariants of stock transactions.
 * **Observer** — `StockService` notifies registered `StockLevelObserver`s after every change; the
-  GUI observer refreshes the dashboard and shows low/out-of-stock alerts on the EDT.
+  GUI observer refreshes the dashboard and shows low/out-of-stock alerts on the EDT, and
+  `AlertHistoryService` records every transition so the warnings stay visible for the whole
+  session.
 * **Strategy** — `ReorderPolicy` (`ThresholdReorderPolicy`, `DemandBasedReorderPolicy`) is selected
   at runtime in the reports tab.
 * **Unit of Work** — `TransactionRunner` (implemented by `DatabaseManager`) wraps multi-row use
@@ -178,7 +183,7 @@ db / model        DatabaseManager (Singleton, connections + transactions),
 | Table | Purpose |
 |---|---|
 | `users` | accounts, SHA-256 password hashes, role |
-| `categories`, `suppliers` | master data referenced by products |
+| `categories`, `suppliers` | master data referenced by products; suppliers also carry the rolling `avg_lead_days` and `delivery_count` |
 | `products` | SKU, name, category/supplier FK, unit price, quantity, reorder level, unit |
 | `stock_transactions` | immutable audit log of stock-in / stock-out / adjustment |
 | `purchase_orders` | purchase-order header: number, supplier, status, dates, note |
@@ -196,7 +201,7 @@ Run the JUnit 4 suite with:
 mvn test
 ```
 
-The suite contains **35 tests** in 8 test classes (plus a shared database-test base class):
+The suite contains **61 tests** in 11 test classes (plus a shared database-test base class):
 
 | Test class | Tests | Coverage |
 |---|---|---|
@@ -208,6 +213,9 @@ The suite contains **35 tests** in 8 test classes (plus a shared database-test b
 | `service.PurchaseOrderServiceTest` | 6 | draft validation, submit/cancel rules, partial and full receiving, stock + audit updates |
 | `service.ProductCatalogServiceTest` | 4 | product creation/filtering, duplicate SKU, delete protection |
 | `service.ReportServiceTest` | 2 | valuation totals, movement aggregation |
+| `service.AlertHistoryServiceTest` | 7 | session alert recording, most-recent-first order, recovery entries, ignored no-op transitions, bounded history |
+| `service.CsvImportServiceTest` | 10 | header handling, per-row independence, invalid numbers, unknown category/supplier, short rows, duplicate SKU, admin-only access |
+| `service.SupplierLeadTimeTest` | 9 | rolling-average arithmetic, persistence, feedback on full receipt, no feedback on partial receipt, administration display |
 
 Each test runs against an isolated embedded Derby in-memory database, so the suite is repeatable
 and leaves no files behind. See `docs\TEST_EVIDENCE.md` for the recorded run.
@@ -230,7 +238,7 @@ The Project 2 report uses the following deliverables (all derived from the built
 | Figure guide | `docs\design\README.md` | Figure inventory, suggested captions, report placement and the design-evolution paragraph |
 | Figure generator | `docs\design\generate_design_diagrams.py` + `pillow_uml.py` | Pillow-only, reproducible generator (no Graphviz/PlantUML); re-run with the bundled Python |
 | Figures in Word | `docs\P2_Design_Figures.docx` | The four figures with captions and placement notes, one figure per page |
-| AI usage log | `docs\AI_USAGE_LOG.md` and `docs\AI_Usage_Log.docx` | Report Appendix A draft: tools used, 14-row prompt log, human-vs-AI contribution table and declaration |
+| AI usage log | `docs\AI_USAGE_LOG.md` and `docs\AI_Usage_Log.docx` | Report Appendix A draft: tools used, 16-row prompt log, human-vs-AI contribution table and declaration |
 | Build scripts | `scripts\build_design_figures_docx.py`, `scripts\build_ai_usage_log_docx.py` | Regenerate the two Word documents from the PNG/Markdown sources |
 
 The AI usage log is a draft that the author must review, confirm and edit before submission; the
@@ -263,7 +271,7 @@ inventory-system/
 |   +-- app/                         ApplicationContext (composition root), DataSeeder
 |   +-- db/                          DatabaseManager (Singleton), SchemaInitializer
 |   +-- dao/  dao/jdbc/              DAO interfaces + JDBC implementations
-|   +-- model/                       domain entities incl. purchase orders
+|   +-- model/                       domain entities incl. purchase orders and stock alerts
 |   +-- service/                     business services, Factory, Strategy, Observer
 |   +-- ui/                          Swing MVC GUI (controller, view, table, component, util)
 |   +-- util/                        Validator, PasswordHasher, CsvUtils
@@ -272,8 +280,8 @@ inventory-system/
     +-- dao/ service/                JUnit 4 test classes
 ```
 
-Code size: **103 Java source files / ~9,500 lines** in `src/main/java` and **9 test files /
-~1,100 lines** in `src/test/java`.
+Code size: **109 Java source files / ~11,700 lines** in `src/main/java` and **12 test files /
+~1,850 lines** in `src/test/java`.
 
 ---
 
@@ -296,5 +304,7 @@ Code size: **103 Java source files / ~9,500 lines** in `src/main/java` and **9 t
 
 This is the **Project 2** deliverable: the same inventory topic as Project 1, extended with a Swing
 GUI, an embedded Derby database, a JDBC DAO layer, MVC-style layering, meaningful unit tests and a
-new purchase-order / replenishment workflow. Version-control history and the demonstration video
-are prepared separately from the source tree.
+new purchase-order / replenishment workflow. On top of that baseline the system adds four
+substantive extensions — CSV bulk import of the product catalogue, a session-long stock-alert
+history, supplier lead-time tracking, and the extended test suite that covers them.
+Version-control history and the demonstration video are prepared separately from the source tree.

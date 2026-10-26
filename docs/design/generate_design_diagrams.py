@@ -260,7 +260,7 @@ def figure_use_case(out_dir: Path):
 # ===========================================================================
 def figure_class_diagram(out_dir: Path):
     F_BODY, F_TITLE, F_LABEL = 34.0, 37.0, 34.0
-    GAP, TOP = 10.0, 76.0
+    GAP, TOP = 8.0, 76.0
     meas = Renderer(2400, 200)
 
     def cb(name, kind="class", attrs=(), methods=(), stereo=None):
@@ -289,28 +289,29 @@ def figure_class_diagram(out_dir: Path):
     s_auth = cb("AuthService", attrs=["- userDao", "- currentUser"],
                 methods=["+ login(): Optional<User>", "+ requireAdmin(): void"])
     s_prod = cb("ProductService", attrs=["- productDao", "- authService"],
-                methods=["+ createProduct()", "+ deleteProduct()"])
-    s_cat = cb("CatalogService", attrs=["- catDao", "- supDao", "- authService"],
+                methods=["+ createProduct()", "+ importFromCsv()"])
+    s_cat = cb("CatalogService", attrs=["- catDao", "- supDao"],
                methods=["+ createCategory()", "+ deleteSupplier()"])
     s_stock = cb("StockService",
                  attrs=["- productDao", "- txDao", "- observers"],
                  methods=["+ stockIn()", "+ stockOut()", "+ adjustStock()"])
     s_report = cb("ReportService",
-                  attrs=["- productDao", "- txDao", "- stockService"],
+                  attrs=["- productDao", "- txDao"],
                   methods=["+ inventoryValuation()", "+ reorderSuggestions()"])
     s_po = cb("PurchaseOrderService",
               attrs=["- orderDao", "- productDao", "- stockService"],
               methods=["+ createDraft()", "+ submit()", "+ receive()"])
-    s_txf = cb("TransactionFactory", methods=["+ stockIn(...)", "+ stockOut(...)",
-                                              "+ adjustment(...)"])
+    s_txf = cb("TransactionFactory", methods=["+ stockIn(...)", "+ stockOut(...)"])
     s_policy = cb("ReorderPolicy", "interface",
                   methods=["+ getName(): String", "+ suggestQuantity()"])
     s_thr = cb("ThresholdReorderPolicy", methods=["+ suggestQuantity()"])
     s_dem = cb("DemandBasedReorderPolicy", methods=["+ suggestQuantity()"])
     s_obs = cb("StockLevelObserver", "interface",
                methods=["+ onStockLevelChanged()"])
+    s_hist = cb("AlertHistoryService", attrs=["- alerts"],
+                methods=["+ getAlerts()", "+ clear()"])
     service_boxes = [s_auth, s_prod, s_cat, s_stock, s_report, s_po, s_txf,
-                     s_policy, s_thr, s_dem, s_obs]
+                     s_policy, s_thr, s_dem, s_obs, s_hist]
 
     # ---------------- DAO / database layer --------------------------------
     d_dao = cb("Dao<T>", "interface",
@@ -342,26 +343,26 @@ def figure_class_diagram(out_dir: Path):
     m_cat = cb("Category", attrs=["- name", "- description"],
                methods=["+ toDisplayString()"])
     m_prod = cb("Product", attrs=["- sku", "- unitPrice", "- quantity",
-                                 "- reorderLevel", "- categoryId", "- supplierId"],
+                                 "- reorderLevel"],
                 methods=["+ increaseStock()", "+ decreaseStock()",
                          "+ getStockStatus()"])
-    m_sup = cb("Supplier", attrs=["- name", "- contactName", "- phone", "- email"],
-               methods=["+ toDisplayString()"])
-    m_tx = cb("StockTransaction", attrs=["- productId", "- type", "- quantity",
-                                         "- occurredAt"],
+    m_sup = cb("Supplier", attrs=["- name", "- contactName", "- email",
+                                 "- avgLeadDays", "- deliveryCount"],
+               methods=["+ recordDelivery()", "+ leadTimeSummary()"])
+    m_tx = cb("StockTransaction", attrs=["- productId", "- type", "- quantity"],
               methods=["+ getSignedQuantity()", "+ getTotalValue()"])
-    m_po = cb("PurchaseOrder", attrs=["- orderNumber", "- supplierId", "- status",
-                                     "- createdBy"],
+    m_po = cb("PurchaseOrder", attrs=["- orderNumber", "- supplierId", "- status"],
               methods=["+ getTotalValue()"])
     m_poline = cb("PurchaseOrderLine", attrs=["- orderId", "- productId",
-                                              "- quantity", "- unitCost",
-                                              "- receivedQuantity"],
+                                              "- quantity", "- receivedQuantity"],
                   methods=["+ getRemainingQuantity()"])
     m_postatus = cb("PurchaseOrderStatus", "enum",
                     attrs=["DRAFT", "ORDERED", "PARTIALLY_RECEIVED",
                            "RECEIVED", "CANCELLED"])
+    m_alert = cb("StockAlert", attrs=["- productSku", "- status", "- occurredAt"],
+                 methods=["+ getProductSku()"])
     model_boxes = [m_ident, m_abs, m_user, m_cat, m_prod, m_sup, m_tx,
-                   m_po, m_poline, m_postatus]
+                   m_po, m_poline, m_postatus, m_alert]
 
     # ---------------- column widths ---------------------------------------
     cols = {"ui": ui_boxes, "service": service_boxes,
@@ -389,8 +390,9 @@ def figure_class_diagram(out_dir: Path):
     ui_note = NoteBox(
         "Further controllers: Dashboard, Stock, Report, Admin. Views (panels, "
         "dialogs, TableModels), getters/setters and constructors are omitted. "
-        "UserRole, TransactionType and the derived StockStatus are omitted.",
-        col_w["ui"], size=F_BODY)
+        "UserRole, TransactionType and the derived StockStatus are omitted. "
+        "In the model layer only the representative attributes and operations "
+        "are shown.", col_w["ui"], size=F_BODY)
     dao_note = NoteBox(
         "JdbcTransactionDao, JdbcPurchaseOrderDao, JdbcUserDao, "
         "JdbcCategoryDao and JdbcSupplierDao follow the same pattern and map "
@@ -525,6 +527,23 @@ def figure_class_diagram(out_dir: Path):
     ty = s_policy.y + s_policy.h * 0.3
     edges.append(Edge([(s_report.x, sy), (lane_sl2, sy), (lane_sl2, ty),
                        (s_policy.x, ty)], kind="assoc", mult_a="1", mult_b="1"))
+
+    # AlertHistoryService implements StockLevelObserver and is notified by StockService.
+    edges.append(Edge([(cx(s_hist), s_hist.y), (cx(s_obs), s_obs.y + s_obs.h)],
+                      kind="real", head_size=16.0))
+    lane_sl3 = box_x["service"] - 24.0
+    sy = s_stock.y + s_stock.h * 0.7
+    ty = s_hist.y + s_hist.h * 0.5
+    edges.append(Edge([(s_stock.x, sy), (lane_sl3, sy), (lane_sl3, ty),
+                       (s_hist.x, ty)], kind="assoc",
+                      mult_a="1", mult_b="0..*"))
+    # The alert history stores immutable StockAlert snapshots.
+    lane_sr2 = box_x["service"] + col_w["service"] + 16.0
+    sy = s_hist.y + s_hist.h * 0.5
+    ty = m_alert.y + m_alert.h * 0.5
+    edges.append(Edge([(s_hist.x + s_hist.w, sy), (lane_sr2, sy),
+                       (lane_sr2, ty), (m_alert.x, ty)], kind="assoc",
+                      mult_a="1", mult_b="*"))
 
     # ---- service -> dao interfaces --------------------------------------
     svc_dao_pairs = [(s_auth, d_dao), (s_prod, d_prod), (s_cat, d_dao),
@@ -662,6 +681,8 @@ def figure_er(out_dir: Path):
         ("", "contact_name", "VARCHAR(40)"),
         ("", "phone", "VARCHAR(20)"),
         ("", "email", "VARCHAR(80)"),
+        ("", "avg_lead_days", "DOUBLE"),
+        ("", "delivery_count", "INTEGER"),
     ])
     draw_entity(r, 80, 700, 620, "STOCK_TRANSACTIONS", [
         ("PK", "id", "VARCHAR(36)"),

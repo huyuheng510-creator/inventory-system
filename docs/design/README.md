@@ -8,7 +8,7 @@ notation, no shadows or transparency) so the two reports look consistent.
 | Figure | File | Pixels | Printed size at 6.3 in | Smallest text |
 |---|---|---|---|---|
 | 1 | `figure1_use_case_p2.png` | 1800 × 2120 | 6.3 × 7.42 in | 7.8 pt |
-| 2 | `figure2_class_diagram_p2.png` | 2001 × 2891 | 6.3 × 9.10 in (full page) | 7.7 pt |
+| 2 | `figure2_class_diagram_p2.png` | 2001 × 3001 | 6.3 × 9.45 in (full page) | 7.7 pt |
 | 3 | `figure3_er_diagram_p2.png` | 1900 × 1660 | 6.3 × 5.50 in | 7.6 pt |
 | 4 | `figure4_mvc_architecture_p2.png` | 1650 × 1620 | 6.3 × 6.19 in | 7.7 pt |
 
@@ -42,7 +42,8 @@ show the dependency direction `ui` → `service` → `dao` → `model`; the `dao
 contains the database infrastructure (`DatabaseManager`, `SchemaInitializer`,
 `ConnectionProvider`, `TransactionRunner`). GUI views and table models are summarised in a
 note; the controllers, services, DAO interfaces/JDBC implementation and domain entities
-(including the new `PurchaseOrder` / `PurchaseOrderLine` / `PurchaseOrderStatus`) are shown
+(including the new `PurchaseOrder` / `PurchaseOrderLine` / `PurchaseOrderStatus`, plus the
+extension classes `AlertHistoryService` and `StockAlert`) are shown
 with their relationships: realisation (dashed hollow triangle), generalisation (solid hollow
 triangle), association with multiplicities and dependency (dashed open arrow). Getter/setter
 and constructor noise is intentionally omitted.
@@ -58,7 +59,8 @@ Entity–relationship diagram of the embedded Apache Derby schema created by
 `SchemaInitializer` from `src/main/resources/db/schema.sql`. Seven tables, primary/foreign/
 unique keys, data types and crow's-foot cardinalities are shown. `USERS` is not referenced
 by a foreign key: `operator_username` and `created_by` store the signed-in username as an
-audit value.
+audit value. `SUPPLIERS` carries the two lead-time columns `avg_lead_days` and
+`delivery_count`, which the purchase-order receipt path maintains.
 
 Suggested caption:
 
@@ -130,9 +132,11 @@ figure stays readable at 6.3 in and at most one A4 page tall. Every label is mea
 * All four PNGs were rendered and inspected at 100 % after downscaling a copy to 1890 px
   wide (= 6.3 in at 300 dpi): no clipped text, no overlapping boxes, readable arrow heads.
 * Print-size check: smallest label is 7.6 pt (Figure 3); class-diagram member text 7.7 pt,
-  class titles 8.4 pt; every figure is ≤ 9.1 in tall at 6.3 in wide.
+  class titles 8.4 pt; every figure is ≤ 9.5 in tall at 6.3 in wide.
 * The class diagram and ER diagram were cross-checked against the built code and
-  `schema.sql` (class names, DAO methods, table/column names and keys).
+  `schema.sql` (class names, DAO methods, table/column names and keys), including the
+  extension classes `AlertHistoryService` / `StockAlert` and the `SUPPLIERS.avg_lead_days`
+  and `SUPPLIERS.delivery_count` columns.
 * The use-case diagram was cross-checked against the GUI tabs, controllers and service
   methods (`PurchaseOrderService.submit/cancel/receive`, `StockService.stockIn/out/adjust`,
   report and administration actions).
