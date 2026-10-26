@@ -61,8 +61,7 @@ public final class ProductController {
     }
 
     /** Opens the empty product form (administrator only). */
-    public void showAddDialog() {
-        if (!requireAdmin()) {
+    public void showAddDialog() {        if (!requireAdmin()) {
             return;
         }
         try {
@@ -155,6 +154,24 @@ public final class ProductController {
         text.append("Stock Status: ").append(selected.getStockStatus().getLabel()).append('\n');
         text.append("Unit: ").append(selected.getUnit());
         UiUtils.info(panel, text.toString());
+    }
+
+    /** Opens the CSV bulk-import dialog (administrator only). */
+    public void showImportDialog() {
+        if (!requireAdmin()) {
+            return;
+        }
+        try {
+            com.cjlu.inventory.ui.view.dialog.CsvImportDialog dialog =
+                    new com.cjlu.inventory.ui.view.dialog.CsvImportDialog(
+                            UiUtils.windowOf(panel), context.getProductService());
+            dialog.setVisible(true);
+            if (dialog.isImported()) {
+                refresh();
+            }
+        } catch (RuntimeException failure) {
+            UiUtils.handle(panel, "open the CSV import dialog", failure);
+        }
     }
 
     private void reloadLookups() {

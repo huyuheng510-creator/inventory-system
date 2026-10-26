@@ -13,7 +13,11 @@ import com.cjlu.inventory.dao.SupplierDao;
 import com.cjlu.inventory.dao.TransactionDao;
 import com.cjlu.inventory.util.Validator;
 
+import com.cjlu.inventory.util.CsvUtils;
+
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -167,6 +171,96 @@ public class ProductService {
     /** Products at or below their reorder level (FR-9). */
     public List<Product> lowStockProducts() {
         return ProductDao.findLowStock();
+    }
+
+    /**
+     * Result of one CSV import row: either a created product or an error message.
+     *
+     * @param rowNumber  1-based row number in the CSV file (excluding the header)
+     * @param sku        the SKU value found in that row (may be blank on parse failure)
+     * @param product    the created product, or {@code null} if the row failed
+     * @param error      human-readable error description, or {@code null} on success
+     */
+    public record ImportResult(int rowNumber, String sku, Product product, String error) {
+        public boolean isSuccess() { return product != null; }
+    }
+
+    /**
+     * Bulk-imports products from a UTF-8 CSV file (FR-2 extension).
+     *
+     * <p>Expected header (case-insensitive): sku, name, category, supplier,
+     * unit_price, quantity, reorder_level, unit. Rows with errors are skipped and
+     * reported; valid rows are committed one by one so that a bad row never rolls
+     * back a good one. Requires administrator privileges.</p>
+     *
+     * @param csvFile path to the CSV file to import
+     * @return per-row results (both successes and failures)
+     * @throws AuthenticationException when the signed-in user is not an administrator
+     * @throws IOException             when the file cannot be read
+     */
+    public List<ImportResult> importFromCsv(Path csvFile)
+            throws AuthenticationException, IOException {
+        authService.requireAdmin();
+
+        List<String[]> rows = CsvUtils.readAll(csvFile);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        // Skip the header row if the first cell looks like a column name.
+        int startRow = 0;
+        if (rows.get(0).length > 0 && rows.get(0)[0].trim().equalsIgnoreCase("sku")) {
+            startRow = 1;
+        }
+
+        List<ImportResult> results = new ArrayList<>();
+        for (int index = startRow; index < rows.size(); index++) {
+            int rowNumber = index - startRow + 1;
+            String[] fields = rows.get(index);
+            if (fields.length < 8) {
+                results.add(new ImportResult(rowNumber, safeGet(fields, 0),
+                        null, "Row has only " + fields.length + " column(s); 8 required."));
+                continue;
+            }
+            String sku = safeGet(fields, 0);
+            try {
+                BigDecimal unitPrice = new BigDecimal(safeGet(fields, 4).replace(",", ""));
+                int quantity = Integer.parseInt(safeGet(fields, 5).replace(",", ""));
+                int reorderLevel = Integer.parseInt(safeGet(fields, 6).replace(",", ""));
+
+                // Resolve category and supplier by name (more human-friendly in CSV).
+                String categoryId = CategoryDao.findByName(safeGet(fields, 2))
+                        .map(com.cjlu.inventory.model.Category::getId)
+                        .orElseThrow(() -> new ValidationException(
+                                "Category '" + safeGet(fields, 2) + "' not found."));
+                String supplierId = SupplierDao.findByName(safeGet(fields, 3))
+                        .map(com.cjlu.inventory.model.Supplier::getId)
+                        .orElseThrow(() -> new ValidationException(
+                                "Supplier '" + safeGet(fields, 3) + "' not found."));
+
+                Product created = createProduct(sku, safeGet(fields, 1),
+                        categoryId, supplierId,
+                        unitPrice, quantity, reorderLevel, safeGet(fields, 7));
+                results.add(new ImportResult(rowNumber, sku, created, null));
+            } catch (InventoryException failure) {
+                results.add(new ImportResult(rowNumber, sku, null, failure.getMessage()));
+            } catch (NumberFormatException failure) {
+                results.add(new ImportResult(rowNumber, sku, null,
+                        "Invalid number in unit_price, quantity or reorder_level: "
+                                + failure.getMessage()));
+            }
+        }
+        return results;
+    }
+
+    /** Returns CSV template column headers for user reference. */
+    public static String[] csvTemplateHeader() {
+        return new String[]{"sku", "name", "category", "supplier",
+                "unit_price", "quantity", "reorder_level", "unit"};
+    }
+
+    private static String safeGet(String[] fields, int index) {
+        return (index < fields.length) ? fields[index].trim() : "";
     }
 
     private void requireReferencesExist(String categoryId, String supplierId) throws ValidationException {
