@@ -16,6 +16,7 @@ import com.cjlu.inventory.dao.jdbc.JdbcTransactionDao;
 import com.cjlu.inventory.dao.jdbc.JdbcUserDao;
 import com.cjlu.inventory.db.DatabaseManager;
 import com.cjlu.inventory.db.SchemaInitializer;
+import com.cjlu.inventory.service.AlertHistoryService;
 import com.cjlu.inventory.service.AuthService;
 import com.cjlu.inventory.service.CatalogService;
 import com.cjlu.inventory.service.ProductService;
@@ -55,6 +56,7 @@ public class ApplicationContext {
     private final PurchaseOrderLineDao purchaseOrderLineDao;
 
     private final AuthService authService;
+    private final AlertHistoryService alertHistoryService;
     private final ProductService productService;
     private final CatalogService catalogService;
     private final StockService stockService;
@@ -67,7 +69,8 @@ public class ApplicationContext {
                                ProductDao productDao, TransactionDao transactionDao,
                                PurchaseOrderDao purchaseOrderDao,
                                PurchaseOrderLineDao purchaseOrderLineDao,
-                               AuthService authService, ProductService productService,
+                               AuthService authService, AlertHistoryService alertHistoryService,
+                               ProductService productService,
                                CatalogService catalogService, StockService stockService,
                                ReportService reportService,
                                PurchaseOrderService purchaseOrderService,
@@ -83,6 +86,7 @@ public class ApplicationContext {
         this.purchaseOrderDao = purchaseOrderDao;
         this.purchaseOrderLineDao = purchaseOrderLineDao;
         this.authService = authService;
+        this.alertHistoryService = alertHistoryService;
         this.productService = productService;
         this.catalogService = catalogService;
         this.stockService = stockService;
@@ -119,11 +123,13 @@ public class ApplicationContext {
             PurchaseOrderLineDao purchaseOrderLineDao = new JdbcPurchaseOrderLineDao(databaseManager);
 
             AuthService authService = new AuthService(userDao);
+            AlertHistoryService alertHistoryService = new AlertHistoryService();
             ProductService productService = new ProductService(productDao, categoryDao,
                     supplierDao, transactionDao, authService);
             CatalogService catalogService = new CatalogService(categoryDao, supplierDao,
                     productDao, authService);
             StockService stockService = new StockService(productDao, transactionDao, authService);
+            stockService.addObserver(alertHistoryService);
             ReportService reportService = new ReportService(productDao, categoryDao,
                     transactionDao, stockService, dataDirectory);
             PurchaseOrderService purchaseOrderService = new PurchaseOrderService(
@@ -136,9 +142,9 @@ public class ApplicationContext {
 
             ApplicationContext context = new ApplicationContext(databaseManager, dataDirectory,
                     userDao, categoryDao, supplierDao, productDao, transactionDao,
-                    purchaseOrderDao, purchaseOrderLineDao, authService, productService,
-                    catalogService, stockService, reportService, purchaseOrderService,
-                    reorderPolicies);
+                    purchaseOrderDao, purchaseOrderLineDao, authService, alertHistoryService,
+                    productService, catalogService, stockService, reportService,
+                    purchaseOrderService, reorderPolicies);
             DataSeeder.seedIfEmpty(context);
             return context;
         } catch (RuntimeException e) {
@@ -189,6 +195,10 @@ public class ApplicationContext {
 
     public AuthService getAuthService() {
         return authService;
+    }
+
+    public AlertHistoryService getAlertHistoryService() {
+        return alertHistoryService;
     }
 
     public ProductService getProductService() {
