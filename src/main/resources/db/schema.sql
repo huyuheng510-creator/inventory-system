@@ -17,11 +17,13 @@ CREATE TABLE categories (
 );
 
 CREATE TABLE suppliers (
-    id           VARCHAR(36) NOT NULL PRIMARY KEY,
-    name         VARCHAR(60) NOT NULL UNIQUE,
-    contact_name VARCHAR(40),
-    phone        VARCHAR(20),
-    email        VARCHAR(80)
+    id            VARCHAR(36) NOT NULL PRIMARY KEY,
+    name          VARCHAR(60) NOT NULL UNIQUE,
+    contact_name  VARCHAR(40),
+    phone         VARCHAR(20),
+    email         VARCHAR(80),
+    avg_lead_days DOUBLE      NOT NULL DEFAULT 0,
+    delivery_count INTEGER    NOT NULL DEFAULT 0
 );
 
 CREATE TABLE products (

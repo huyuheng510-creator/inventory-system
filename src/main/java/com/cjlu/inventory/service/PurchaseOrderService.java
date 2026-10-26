@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -257,6 +258,8 @@ public class PurchaseOrderService {
                         ? PurchaseOrderStatus.RECEIVED : PurchaseOrderStatus.PARTIALLY_RECEIVED);
                 if (complete) {
                     order.setReceivedAt(LocalDateTime.now());
+                    // Record actual lead time on the supplier for future replenishment estimates.
+                    recordLeadTime(order);
                 }
                 purchaseOrderDao.save(order);
             });
@@ -265,8 +268,25 @@ public class PurchaseOrderService {
         }
     }
 
-    private List<PurchaseOrder> attachLines(List<PurchaseOrder> orders) {
-        for (PurchaseOrder order : orders) {
+    /**
+     * Updates the supplier's rolling average lead time after a full receipt.
+     * Uses the gap between the order's creation date and the current instant.
+     * Silent on lookup failures — lead-time tracking is best-effort.
+     */
+    private void recordLeadTime(PurchaseOrder order) {
+        try {
+            supplierDao.findById(order.getSupplierId()).ifPresent(supplier -> {
+                long days = ChronoUnit.DAYS.between(
+                        order.getCreatedOn().toLocalDate(), LocalDate.now());
+                supplier.recordDelivery((int) Math.max(0, days));
+                supplierDao.save(supplier);
+            });
+        } catch (RuntimeException ignored) {
+            // Lead-time tracking must never abort the receive transaction.
+        }
+    }
+
+    private List<PurchaseOrder> attachLines(List<PurchaseOrder> orders) {        for (PurchaseOrder order : orders) {
             order.setLines(purchaseOrderLineDao.findByOrderId(order.getId()));
         }
         return orders;

@@ -33,6 +33,8 @@ public final class SchemaInitializer {
     public static void ensureSchema(ConnectionProvider provider) {
         provider.withConnection(connection -> {
             if (tableExists(connection, "USERS")) {
+                // Existing database — run any pending column migrations.
+                runMigrations(connection);
                 return null;
             }
             for (String statement : schemaStatements()) {
@@ -42,6 +44,35 @@ public final class SchemaInitializer {
             }
             return null;
         });
+    }
+
+    /**
+     * Adds new columns to existing databases created before the current schema.
+     * Each migration is idempotent: it checks whether the column already exists
+     * before issuing the ALTER TABLE.
+     */
+    private static void runMigrations(java.sql.Connection connection) throws java.sql.SQLException {
+        if (!columnExists(connection, "SUPPLIERS", "AVG_LEAD_DAYS")) {
+            try (Statement sql = connection.createStatement()) {
+                sql.execute(
+                        "ALTER TABLE suppliers ADD COLUMN avg_lead_days DOUBLE NOT NULL DEFAULT 0");
+            }
+        }
+        if (!columnExists(connection, "SUPPLIERS", "DELIVERY_COUNT")) {
+            try (Statement sql = connection.createStatement()) {
+                sql.execute(
+                        "ALTER TABLE suppliers ADD COLUMN delivery_count INTEGER NOT NULL DEFAULT 0");
+            }
+        }
+    }
+
+    private static boolean columnExists(java.sql.Connection connection,
+                                        String tableName, String columnName)
+            throws java.sql.SQLException {
+        java.sql.DatabaseMetaData meta = connection.getMetaData();
+        try (ResultSet cols = meta.getColumns(null, null, tableName, columnName)) {
+            return cols.next();
+        }
     }
 
     private static boolean tableExists(Connection connection, String tableName) throws SQLException {

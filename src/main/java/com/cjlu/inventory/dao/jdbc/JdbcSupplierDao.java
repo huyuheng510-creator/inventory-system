@@ -14,7 +14,8 @@ import java.util.Optional;
 /** JDBC implementation of {@link SupplierDao}. */
 public class JdbcSupplierDao implements SupplierDao {
 
-    private static final String COLUMNS = "id, name, contact_name, phone, email";
+    private static final String COLUMNS =
+            "id, name, contact_name, phone, email, avg_lead_days, delivery_count";
 
     private final ConnectionProvider database;
 
@@ -51,23 +52,28 @@ public class JdbcSupplierDao implements SupplierDao {
     public void save(Supplier supplier) {
         database.withConnection(connection -> {
             try (PreparedStatement update = connection.prepareStatement(
-                    "UPDATE suppliers SET name = ?, contact_name = ?, phone = ?, email = ? WHERE id = ?")) {
+                    "UPDATE suppliers SET name = ?, contact_name = ?, phone = ?, email = ?, "
+                            + "avg_lead_days = ?, delivery_count = ? WHERE id = ?")) {
                 update.setString(1, supplier.getName());
                 update.setString(2, supplier.getContactName());
                 update.setString(3, supplier.getPhone());
                 update.setString(4, supplier.getEmail());
-                update.setString(5, supplier.getId());
+                update.setDouble(5, supplier.getAvgLeadDays());
+                update.setInt(6, supplier.getDeliveryCount());
+                update.setString(7, supplier.getId());
                 if (update.executeUpdate() > 0) {
                     return null;
                 }
             }
             try (PreparedStatement insert = connection.prepareStatement(
-                    "INSERT INTO suppliers (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?)")) {
+                    "INSERT INTO suppliers (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?)")) {
                 insert.setString(1, supplier.getId());
                 insert.setString(2, supplier.getName());
                 insert.setString(3, supplier.getContactName());
                 insert.setString(4, supplier.getPhone());
                 insert.setString(5, supplier.getEmail());
+                insert.setDouble(6, supplier.getAvgLeadDays());
+                insert.setInt(7, supplier.getDeliveryCount());
                 insert.executeUpdate();
             }
             return null;
@@ -103,6 +109,8 @@ public class JdbcSupplierDao implements SupplierDao {
     private static Supplier map(ResultSet result) throws SQLException {
         return new Supplier(result.getString("id"), result.getString("name"),
                 result.getString("contact_name"), result.getString("phone"),
-                result.getString("email"));
+                result.getString("email"),
+                result.getDouble("avg_lead_days"),
+                result.getInt("delivery_count"));
     }
 }
